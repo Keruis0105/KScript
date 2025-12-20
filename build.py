@@ -12,7 +12,7 @@ PROJECTS = [
         "name": "test",
         "type": "exe",
         "sources": [
-            "core/test.String.Core.zig"
+            "core/test.File.Dir.zig"
         ],
     
         "module_paths": [
@@ -83,7 +83,9 @@ def build_project(proj):
     cmd.extend([
         "-target", TARGET,
         "-O", MODE,
-        f"-femit-bin={out_file}"
+        f"-femit-bin={out_file}",
+        "-lc",
+        "-lShlwapi"
     ])
 
     if typ == "lib":

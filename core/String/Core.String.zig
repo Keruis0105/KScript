@@ -19,8 +19,8 @@ pub const impl = struct {
             const box_value_t = box_t.box_value_t;
             const box_buffer_t = box_t.box_buffer_t;
 
-            const last_char = @sizeOf(box_value_t) - 1;
-            pub const max_small_size = last_char / type_size;
+            const last_char = @sizeOf(box_value_t);
+            pub const max_small_size = (last_char / type_size) - 2;
 
             pub fn init() @This() {
                 var instance: @This() = .{};
@@ -30,27 +30,44 @@ pub const impl = struct {
 
             pub fn init_c(c: char_t) @This() {
                 var instanc: @This() = .{};
-                instanc.reset(1);
+                instanc.reset();
                 instanc.storage.as_small[0] = c;
                 return instanc;
             }
 
-            pub fn init_str(str: ?const_pointer_t) @This() {
+            pub fn init_str(str: ?const_pointer_t) !@This() {
                 var instance: @This() = .{};
                 if (str) |s| {
                     const length = string_trait.length(s);
-                    if (length < max_small_size) 
+                    if (length < max_small_size)
                         initSmall(&instance, s, length)
-                     else 
-                        initMedium(&instance, s, length) 
-                            catch return .{};
+                    else 
+                        try initMedium(&instance, s, length);
                 } else {
                     instance.reset();
                 }
                 return instance;
             }
 
-            pub fn init_copy(other: *@This()) !@This() {
+            pub fn init_slice(slice: []const char_t) !@This() {
+                var instance: @This() = .{};
+                const length = slice.len;
+
+                if (length == 0) {
+                    instance.reset();
+                    return instance;
+                }
+
+                if (length < max_small_size) {
+                    initSmall(&instance, slice.ptr, length);
+                } else {
+                    try initMedium(&instance, slice.ptr, length);
+                }
+
+                return instance;
+            }
+
+            pub fn init_copy(other: *const @This()) !@This() {
                 var instance: @This() = .{};
                 try if (other.isSmall()) instance.copySmall(other)
                     else instance.copyMedium(other);
@@ -83,8 +100,8 @@ pub const impl = struct {
 
             //
 
-            pub fn size(self: *@This()) usize {
-                return if (isSmall(self)) @intCast(self.storage.as_small[max_small_size])
+            pub fn size(self: *const @This()) usize {
+                return if (isSmall(self)) return @intCast(self.storage.as_small[max_small_size + 1])
                     else self.storage.as_ml.size_;
             }
 
@@ -98,8 +115,18 @@ pub const impl = struct {
                     else return self.storage.as_ml.data_;
             }
 
+            pub fn as_slice(self: *const @This()) []const char_t {
+                if (self.isSmall()) return self.storage.as_small[0..self.size()] 
+                    else return self.storage.as_ml.data_[0..self.size()];
+            }
+
+            pub fn as_c_str(self: *@This()) [*c]const char_t {
+                if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
+                    else return @ptrCast(self.storage.as_ml.data_);
+            }
+
             pub fn empty(self: *@This()) bool {
-                if (self.isSmall()) return self.storage.as_small[max_small_size] == 0
+                if (self.isSmall()) return self.storage.as_small[max_small_size + 1] == 0
                     else return self.storage.as_ml.size_ == 0;
             }
 
@@ -141,6 +168,13 @@ pub const impl = struct {
                 return self;
             }
 
+            pub fn append(self: *@This(), str: ?const_pointer_t) !*@This() {
+                if (str) |s| {
+                    try if (self.isSmall()) self.appendSmall(s) else self.appendMedium(s);
+                }
+                return self;
+            }
+
             //
 
             fn pointer(self: *@This()) pointer_t {
@@ -153,19 +187,19 @@ pub const impl = struct {
             }
 
             fn setSmallSize(self: *@This(), s: usize) void {
-                std.debug.assert(s <= max_small_size);
-                self.storage.as_small[max_small_size] = @intCast(s);
+                std.debug.assert(s < max_small_size);
+                self.storage.as_small[max_small_size + 1] = @intCast(s);
                 self.storage.as_small[s] = 0;
             }
 
-            fn isSmall(self: *@This()) bool {
+            fn isSmall(self: *const @This()) bool {
                 return box_t.category(&self.storage) == .isSmall;
             }
 
             fn initSmall(self: *@This(), d: const_pointer_t, s: usize) void {
-                std.debug.assert(s <= max_small_size);
-                setSmallSize(self, s);
+                std.debug.assert(s < max_small_size);
                 string_trait.copy(&self.storage.as_small, d, s);
+                setSmallSize(self, s);
             }
 
             fn initMedium(self: *@This(), d: const_pointer_t, s: usize) !void {
@@ -177,11 +211,11 @@ pub const impl = struct {
                 self.storage.as_ml.setCapacity(s, .isMedium);
             }
 
-            fn copySmall(self: *@This(), other: *@This()) void {
+            fn copySmall(self: *@This(), other: *const @This()) void {
                 self.storage.as_small = other.storage.as_small;
             }
 
-            fn copyMedium(self: *@This(), other: *@This()) !void {
+            fn copyMedium(self: *@This(), other: *const @This()) !void {
                 const other_len: usize = other.storage.as_ml.size_;
                 var alloc: alloc_t = .{};
                 self.storage.as_ml.data_ = try alloc.allocator(other_len + 1);
@@ -218,7 +252,7 @@ pub const impl = struct {
             }
 
             fn reserverMedium(self: *@This(), s: usize) !void {
-                if (s <= self.storage.as_ml.capacity()) return;
+                if (s < self.storage.as_ml.capacity()) return;
 
                 const old_size: usize = self.size();
 
@@ -234,7 +268,7 @@ pub const impl = struct {
 
             fn resizeSmall(self: *@This(), s: usize, fill_char: char_t) !void {
                 const old_size: usize = self.size();
-                if (s <= max_small_size) {
+                if (s < max_small_size) {
                     try self.reserverSmall(s);
                     string_trait.assign(
                         @ptrCast(&self.storage.as_small[old_size]),
@@ -268,6 +302,39 @@ pub const impl = struct {
 
                 self.storage.as_ml.size_ = s;
                 self.storage.as_ml.data_[s] = 0;
+            }
+
+            fn appendSmall(self: *@This(), str: const_pointer_t) !void {
+                const other_len = string_trait.length(str);
+                if (other_len == 0) return;
+                const old_size = self.size();
+                const new_size = old_size + other_len;
+                if (new_size < max_small_size) {
+                    const old_ptr = &self.storage.as_small[old_size];
+                    string_trait.copy(@ptrCast(old_ptr), str, other_len);
+                    self.setSmallSize(new_size);
+                    return;
+                }
+                
+                try self.reserverSmall(new_size);
+                string_trait.copy(@ptrCast(&self.storage.as_ml.data_[old_size]), str, other_len);
+                self.storage.as_ml.size_ = new_size;
+                self.storage.as_ml.data_[new_size] = 0;
+            }
+
+            fn appendMedium(self: *@This(), str: const_pointer_t) !void {
+                const other_len = string_trait.length(str);
+                if (other_len == 0) return;
+                const old_size = self.size();
+                const new_size = old_size + other_len;
+                if (new_size > self.capacity()) {
+                    try self.reserverMedium(new_size);
+                }
+
+                string_trait.copy(@ptrCast(&self.storage.as_ml.data_[old_size]), str, other_len);
+
+                self.storage.as_ml.size_ = new_size;
+                self.storage.as_ml.data_[new_size] = 0;
             }
         };
     }
