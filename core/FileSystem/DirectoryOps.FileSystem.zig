@@ -72,7 +72,7 @@ pub const impl = struct {
             return self;
         }
 
-        pub fn create(self: *@This()) !@This() {
+        pub fn create(self: *@This()) !*@This() {
             const path = self.path.as_slice();
             const ok = c.CreateDirectoryA(path.ptr, null);
             if (ok == 0) {

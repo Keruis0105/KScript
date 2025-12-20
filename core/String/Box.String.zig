@@ -41,7 +41,7 @@ pub const impl = struct {
             pub const box_buffer_t = @TypeOf(@field(Storage, "as_small"));
             
             pub fn category(self: *const Storage) category_module.Category {
-                return @enumFromInt(self.as_ml.capcaity_ & category_bits); 
+                return @enumFromInt(self.as_small[@sizeOf(MediumLarge) - 1] & category_bits); 
             }
         };
     }

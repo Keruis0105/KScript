@@ -20,7 +20,7 @@ pub const impl = struct {
             const box_buffer_t = box_t.box_buffer_t;
 
             const last_char = @sizeOf(box_value_t);
-            pub const max_small_size = (last_char / type_size) - 2;
+            pub const max_small_size = (last_char / type_size) - 3;
 
             pub fn init() @This() {
                 var instance: @This() = .{};
@@ -238,7 +238,7 @@ pub const impl = struct {
             }
 
             fn reserverSmall(self: *@This(), s: usize) !void {
-                if (s <= max_small_size) return;
+                if (s < max_small_size) return;
 
                 const old_size: usize = self.size();
 
