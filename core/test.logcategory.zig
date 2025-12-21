@@ -2,16 +2,16 @@ const std = @import("std");
 const log_category_module = @import("Logger/LogCategory.Logger.zig");
 
 pub fn main() !void {
-    var allocator = std.heap.page_allocator;
+    //var allocator = std.heap.page_allocator;
 
-    const cat1 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar", &allocator);
+    const cat1 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar");
 
     std.debug.print("cat1 name: {s}\n", .{cat1.getName()});
 
-    const cat2 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar", &allocator);
+    const cat2 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar");
     std.debug.print("cat2 name: {s}\n", .{cat2.getName()});
 
-    const cat3 = try log_category_module.impl.LogCategory.getOrCreate("baz.qux", &allocator);
+    const cat3 = try log_category_module.impl.LogCategory.getOrCreate("baz.qux");
     std.debug.print("cat3 name: {s}\n", .{cat3.getName()});
 
     if (cat1.data.ptr == cat2.data.ptr) {
