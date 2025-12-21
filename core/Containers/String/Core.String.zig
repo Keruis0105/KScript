@@ -28,6 +28,12 @@ pub const impl = struct {
                 return instance;
             }
 
+            pub fn init_size(s: usize) !@This() {
+                var instance: @This() = init();
+                _ = try instance.reserve(s);
+                return instance;
+            }
+
             pub fn init_c(c: char_t) @This() {
                 var instanc: @This() = .{};
                 instanc.reset();

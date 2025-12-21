@@ -1,4 +1,4 @@
-const string_module = @import("../String/Mod.String.zig").mod;
+const string_module = @import("../Containers/String/Mod.String.zig").mod;
 
 pub const impl = struct {
     pub const DirectoryInfo = struct {

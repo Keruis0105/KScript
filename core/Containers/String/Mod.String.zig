@@ -1,6 +1,6 @@
 const character_type_module = @import("CharacterType.String.zig").impl;
 const trait_module = @import("Trait.String.zig").impl;
-const memory_module = @import("../Memory/Mod.Memory.zig");
+const memory_module = @import("../../Memory/Mod.Memory.zig");
 
 pub const mod = struct {
     pub const string = @import("Core.String.zig").impl.Core(trait_module.Trait(.char), memory_module.Allocator.Allocator(character_type_module.CharTypeOf(.char)));

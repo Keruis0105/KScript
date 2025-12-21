@@ -4,10 +4,9 @@ const dir = @import("FileSystem/DirectoryOps.FileSystem.zig").impl.DirectoryOps;
 const file_system_error = @import("FileSystem/Error.FileSystem.zig").impl.FileSystemError;
 
 pub fn main() !void {
-    const s1 = try String.init_str("./core/gg/kk");
+    const s1 = try String.init_str("./core");
     var t1 = try dir.init(s1);
     const d1 = try t1.scan();
-    _ = try d1.createRecursive();
     const ie1 = try d1.getInfo();
     if (d1.err) |e| {
         std.debug.print("Scan error: {}\n", .{e});

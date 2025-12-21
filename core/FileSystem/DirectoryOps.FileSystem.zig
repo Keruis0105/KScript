@@ -2,7 +2,7 @@ const std = @import("std");
 const directory_info = @import("DirectoryInfo.FileSystem.zig").impl.DirectoryInfo;
 const window_path_type = @import("WindowsPathType.FileSystem.zig").impl.WindowsPathType;
 const file_system_error = @import("Error.FileSystem.zig").impl.FileSystemError;
-const string_module = @import("../String/Mod.String.zig").mod;
+const string_module = @import("../Containers/String/Mod.String.zig").mod;
 
 const c = @cImport({
     @cInclude("io.h");
@@ -58,7 +58,8 @@ pub const impl = struct {
             const path_slice = self.path.as_slice();
             info.name = try extractNameFromPath(path_slice, self.path_type);
             info.relative_path = try relativePathWin32(path_slice, self.path_type);
-            info.full_path = try fullPathWin32(path_slice, self.path_type);            try scanDir(path_slice, &info);
+            info.full_path = try fullPathWin32(path_slice, self.path_type);            
+            try scanDir(path_slice, &info);
             info.depth = computeDepth(info.full_path.as_slice());
             if (self.info) |*old_info| old_info.deinit();
 
@@ -95,45 +96,6 @@ pub const impl = struct {
         }
 
         pub fn createRecursive(self: *@This()) !*@This() {
-            const path_slice = try fullPathWin32(self.path.as_slice(), self.path_type);
-
-            var segments = std.ArrayList([]const u8).init();
-            var last_start: usize = 0;
-
-            for (path_slice, 0..) |ch, i| {
-                if (ch == '\\' or ch == '/') {
-                    if (i != last_start) try segments.append(path_slice[last_start..i]);
-                    last_start = i + 1;
-                }
-            }
-            if (last_start < path_slice.len) try segments.append(path_slice[last_start..]);
-
-            var stack = std.ArrayList([]const u8).init();
-            for (segments.items) |seg| {
-                if (std.mem.eql(u8, seg, "..")) {
-                    if (stack.items.len > 0) stack.items.len -= 1;
-                } else if (!std.mem.eql(u8, seg, ".")) {
-                    try stack.append(seg);
-                }
-            }
-
-            var current_path = try string_module.string.init_slice("");
-
-            switch (self.path_type) {
-                .UNC => try current_path.append("\\\\"),
-                .Device => try current_path.append("\\\\?\\"),
-                .AbsoluteDrive, .Relative => {},
-            }
-
-            for (stack.items) |seg| {
-                try current_path.append(seg);
-                try current_path.append("\\");
-                const ok = c.CreateDirectoryA(current_path.as_slice().ptr, null);
-                if (ok == 0) {
-                    const err = c.GetLastError();
-                    if (err != c.ERROR_ALREADY_EXISTS) return error.IOError;
-                }
-            }
 
             return self;
         }
