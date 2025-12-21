@@ -7,8 +7,11 @@ pub const impl = struct {
             pub const pointer_t = Tr.pointer_t;
 
             pub const type_size: usize = Tr.type_size;
-            pub const category_shift: usize = Tr.category_shift;
-            pub const category_bits: usize = Tr.category_bits;
+            pub const last_char: usize = @sizeOf(MediumLarge) - 1;
+            pub const category_shift: usize = (@sizeOf(usize) - 1) * 8;
+            pub const category_extract_mask: usize = 0xC0;
+            pub const capacity_extract_mask: usize = (~category_extract_mask) << category_shift;
+
 
             const MediumLarge = extern struct {
                 data_:     pointer_t,
@@ -16,7 +19,7 @@ pub const impl = struct {
                 capcaity_: usize,
 
                 pub fn capacity(self: *const MediumLarge) usize {
-                    return self.capcaity_ >> category_shift;
+                    return self.capcaity_ & capacity_extract_mask;
                 }
 
                 pub fn setCapacity(
@@ -24,13 +27,14 @@ pub const impl = struct {
                     cap:   usize,
                     cat:   category_module.Category
                 ) void {
-                    self.capcaity_ = (cap << category_shift) | @intFromEnum(cat);
+                    self.capcaity_ = cap | (@as(usize, @intFromEnum(cat)) << category_shift);
                 }
             };
 
             pub const medium_large_size: usize = @sizeOf(MediumLarge) / type_size;
 
             pub const Storage = union {
+                as_byte: [@sizeOf(MediumLarge)]u8,
                 as_ml: MediumLarge,
                 as_small: [medium_large_size]char_t,
             };
@@ -41,7 +45,7 @@ pub const impl = struct {
             pub const box_buffer_t = @TypeOf(@field(Storage, "as_small"));
             
             pub fn category(self: *const Storage) category_module.Category {
-                return @enumFromInt(self.as_small[@sizeOf(MediumLarge) - 1] & category_bits); 
+                return @enumFromInt(self.as_byte[last_char] & category_extract_mask); 
             }
         };
     }

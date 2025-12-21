@@ -19,8 +19,8 @@ pub const impl = struct {
             const box_value_t = box_t.box_value_t;
             const box_buffer_t = box_t.box_buffer_t;
 
-            const last_char = @sizeOf(box_value_t);
-            pub const max_small_size = (last_char / type_size) - 3;
+            const last_char = @sizeOf(box_value_t) - 1;
+            pub const max_small_size = last_char / type_size;
 
             pub fn init() @This() {
                 var instance: @This() = .{};
@@ -50,21 +50,7 @@ pub const impl = struct {
             }
 
             pub fn init_slice(slice: []const char_t) !@This() {
-                var instance: @This() = .{};
-                const length = slice.len;
-
-                if (length == 0) {
-                    instance.reset();
-                    return instance;
-                }
-
-                if (length < max_small_size) {
-                    initSmall(&instance, slice.ptr, length);
-                } else {
-                    try initMedium(&instance, slice.ptr, length);
-                }
-
-                return instance;
+                return init_str(slice.ptr);
             }
 
             pub fn init_copy(other: *const @This()) !@This() {
@@ -101,7 +87,7 @@ pub const impl = struct {
             //
 
             pub fn size(self: *const @This()) usize {
-                return if (isSmall(self)) return @intCast(self.storage.as_small[max_small_size + 1])
+                return if (isSmall(self)) return @intCast(self.storage.as_small[max_small_size])
                     else self.storage.as_ml.size_;
             }
 
@@ -126,7 +112,7 @@ pub const impl = struct {
             }
 
             pub fn empty(self: *@This()) bool {
-                if (self.isSmall()) return self.storage.as_small[max_small_size + 1] == 0
+                if (self.isSmall()) return self.storage.as_small[max_small_size] == 0
                     else return self.storage.as_ml.size_ == 0;
             }
 
@@ -175,6 +161,12 @@ pub const impl = struct {
                 return self;
             }
 
+            pub fn append_slice(self: *@This(), str_slice: []const char_t) !*@This() {
+                const s = str_slice;
+                try if (self.isSmall()) self.appendSmall(s.ptr) else self.appendMedium(s.ptr);
+                return self;
+            }
+
             //
 
             fn pointer(self: *@This()) pointer_t {
@@ -188,7 +180,7 @@ pub const impl = struct {
 
             fn setSmallSize(self: *@This(), s: usize) void {
                 std.debug.assert(s < max_small_size);
-                self.storage.as_small[max_small_size + 1] = @intCast(s);
+                self.storage.as_small[max_small_size] = @intCast(s);
                 self.storage.as_small[s] = 0;
             }
 
@@ -328,7 +320,7 @@ pub const impl = struct {
                 const old_size = self.size();
                 const new_size = old_size + other_len;
                 if (new_size > self.capacity()) {
-                    try self.reserverMedium(new_size);
+                    _ = try self.reserve(new_size);
                 }
 
                 string_trait.copy(@ptrCast(&self.storage.as_ml.data_[old_size]), str, other_len);

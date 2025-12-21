@@ -3,6 +3,7 @@ pub const impl = struct {
 
     pub const Category = enum(category_t) {
         isSmall = 0,
-        isMedium = 1,
+        isMedium = 0x80,
+        isShared = 0x40
     };
 };

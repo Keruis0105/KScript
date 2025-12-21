@@ -10,8 +10,6 @@ pub const impl = struct {
             pub const const_pointer_t = [*]const Ty;
 
             pub const type_size: usize = @sizeOf(Ty);
-            pub const category_shift: usize = 1;
-            pub const category_bits: usize = 0b1;
 
             pub fn length(str: const_pointer_t) usize {
                 var i: usize = 0;

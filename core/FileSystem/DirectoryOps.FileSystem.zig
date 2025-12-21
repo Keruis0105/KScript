@@ -36,7 +36,7 @@ pub const impl = struct {
         }
 
         pub fn getInfo(self: *@This()) !?directory_info {
-            return if (self.info) |info| try info.init_copy() 
+            return if (self.info) |info| return try info.init_copy()
                 else null;
         }
 
@@ -56,15 +56,10 @@ pub const impl = struct {
                 .depth = 0
             };
             const path_slice = self.path.as_slice();
-
             info.name = try extractNameFromPath(path_slice, self.path_type);
             info.relative_path = try relativePathWin32(path_slice, self.path_type);
-            info.full_path = try fullPathWin32(path_slice, self.path_type);
-
-            try scanDir(path_slice, &info);
-            
+            info.full_path = try fullPathWin32(path_slice, self.path_type);            try scanDir(path_slice, &info);
             info.depth = computeDepth(info.full_path.as_slice());
-
             if (self.info) |*old_info| old_info.deinit();
 
             self.info = info;
@@ -84,8 +79,8 @@ pub const impl = struct {
 
         pub fn createSubdir(self: *@This(), name: []const u8) !*@This() {
             var full_path = try self.path.init_copy();
-            try full_path.append("\\");
-            try full_path.append(name.as_slice());
+            _ = try full_path.append("\\");
+            _ = try full_path.append(name.ptr);
 
             const ok = c.CreateDirectoryA(full_path.as_slice().ptr, null);
             if (ok == 0) {
@@ -100,7 +95,7 @@ pub const impl = struct {
         }
 
         pub fn createRecursive(self: *@This()) !*@This() {
-            const path_slice = self.path.as_slice();
+            const path_slice = try fullPathWin32(self.path.as_slice(), self.path_type);
 
             var segments = std.ArrayList([]const u8).init();
             var last_start: usize = 0;
@@ -273,21 +268,75 @@ pub const impl = struct {
 
         fn fullPathWin32(path: []const u8, pathType: window_path_type) !string_module.string {
             switch (pathType) {
-                .AbsoluteDrive, .Device, .UNC => return string_module.string.init_slice(path),
-                .Relative => {
-                    var buf: [c.MAX_PATH]u8 = undefined;
+                .AbsoluteDrive, .UNC, .Device => {
+                    return string_module.string.init_slice(path);
+                },
+                .Relative => {},
+            }
 
-                    const len = c.GetFullPathNameA(
-                        path.ptr,
-                        buf.len,
-                        &buf[0],
-                        null
-                    );
-                    if (len == 0) return error.IOError;
+            var dba: std.heap.DebugAllocator(.{}) = .init;
+            const gpa = dba.allocator();
+            const allocator: std.mem.Allocator = gpa;
 
-                    return string_module.string.init_slice(buf[0..len]);
+            var cwd_buf: [c.MAX_PATH]u8 = undefined;
+            const cwd_len = c.GetCurrentDirectoryA(cwd_buf.len, &cwd_buf[0]);
+            if (cwd_len == 0) return error.IOError;
+
+            const cwd = cwd_buf[0..cwd_len];
+          
+            var combined = try string_module.string.init_slice("");
+            defer combined.deinit();
+
+            _ = try combined.append(cwd.ptr);
+            if (!std.mem.endsWith(u8, cwd, "\\")) {
+                _ = try combined.append("\\");
+            }
+
+            const raw = try std.mem.concat(allocator, u8, &.{combined.as_slice(), path});
+      
+            const out = try normalizePathWin32Slice(allocator, raw);
+            
+            return try string_module.string.init_slice(out);
+        }
+
+        fn normalizePathWin32Slice(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+            var stack: std.ArrayList([]const u8) = .empty;
+
+            var start: usize = 0;
+            var i: usize = 0;
+            while (i <= path.len) : (i += 1) {
+                const ch = if (i < path.len) path[i] else '\\';
+                if (ch == '\\' or ch == '/') {
+                    if (i > start) {
+                        const seg = path[start..i];
+                        if (!std.mem.eql(u8, seg, ".")) {
+                            if (std.mem.eql(u8, seg, "..")) {
+                                if (stack.items.len > 0) stack.items.len -= 1;
+                            } else {
+                                try stack.append(allocator, seg);
+                            }
+                        }
+                    }
+                    start = i + 1;
                 }
             }
+
+            var total_len: usize = 0;
+            for (stack.items) |seg| total_len += seg.len;
+            if (stack.items.len > 1) total_len += stack.items.len - 1;
+
+            var out_buf = try allocator.alloc(u8, total_len);
+            var pos: usize = 0;
+            for (stack.items, 0..) |seg, idx| {
+                @memcpy(out_buf[pos..], seg);
+                pos += seg.len;
+                if (idx + 1 < stack.items.len) {
+                    out_buf[pos] = '\\';
+                    pos += 1;
+                }
+            }
+
+            return out_buf;
         }
 
         pub fn scanDir(path: []const u8, info: *directory_info) !void {
