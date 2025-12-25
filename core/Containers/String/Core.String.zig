@@ -55,6 +55,12 @@ pub const impl = struct {
                 return instance;
             }
 
+            pub fn init_heap(s: usize) !@This() {
+                var instance: @This() = .{};
+                try initMedium(&instance, "", s);
+                return instance;
+            }
+
             pub fn init_slice(slice: []const char_t) !@This() {
                 return init_str(slice.ptr);
             }
@@ -167,6 +173,12 @@ pub const impl = struct {
                 return self;
             }
 
+            pub fn append_c(self: *@This(), c: char_t) !*@This() {
+                const cptr = c;
+                try if (self.isSmall()) self.appendSmall(@ptrCast(&cptr)) else self.appendMedium(@ptrCast(&cptr));
+                return self;
+            }
+
             pub fn append_slice(self: *@This(), str_slice: []const char_t) !*@This() {
                 const s = str_slice;
                 try if (self.isSmall()) self.appendSmall(s.ptr) else self.appendMedium(s.ptr);
@@ -175,9 +187,14 @@ pub const impl = struct {
 
             //
 
-            fn pointer(self: *@This()) pointer_t {
+            pub fn pointer(self: *@This()) pointer_t {
                 if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
                     else return self.storage.as_ml.data_;
+            }
+
+            pub fn cpointer(self: @This()) const_pointer_t {
+                if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
+                else return self.storage.as_ml.data_;
             }
 
             fn reset(self: *@This()) void {

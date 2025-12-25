@@ -1,10 +1,12 @@
+const std = @import("std");
 const string_module = @import("../Containers/Mod.Containers.zig").String;
 const chars_common = @import("../Common/Chars.Common.zig").Common;
 
 pub const impl = struct {
     pub const LogName = struct {
-        pub fn canonicalize(slice: []const u8) !string_module.string {
-            var cname = try string_module.string.init_size(slice.len);
+        pub fn canonicalize(alloc: std.mem.Allocator, slice: []const u8) !*string_module.string {
+            var cname = try alloc.create(string_module.string);
+            cname.* = string_module.string.init();
             
             var end: usize = slice.len;
             while (end > 0 and chars_common.isSeparator(slice[end - 1])) {
@@ -20,10 +22,11 @@ pub const impl = struct {
                     _ = try cname.append(".");
                     ignoreSeparator = true;
                 } else {
-                    _ = try cname.append(@ptrCast(&c));
+                    _ = try cname.append_c(c);
                     ignoreSeparator = false;
                 }
             }
+
             return cname;
         }
     };
