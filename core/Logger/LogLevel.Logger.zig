@@ -3,7 +3,6 @@ pub const impl = struct {
     pub const LogLevel = enum(LogLevelEnumType) {
         // 未初始化 / 无日志
         UNINITIALIZED = 0x0,
-        NONE        = 0x00989680,   // 10_000_000
         MIN_LEVEL   = 0x00989680,   // 10_000_000
 
         // Debug levels
@@ -20,7 +19,6 @@ pub const impl = struct {
 
         // Warnings
         WARN    = 0x29FDC000, // 700_000_000
-        WARNING = 0x29FDC000, // alias
 
         // Errors
         ERR = 0x2FAF0800, // 800_000_000

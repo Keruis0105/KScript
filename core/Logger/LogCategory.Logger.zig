@@ -1,6 +1,7 @@
 const std = @import("std");
 const string_module = @import("../Containers/Mod.Containers.zig").String;
 const log_name_module = @import("LogName.Logger.zig").impl;
+const log_level_module = @import("LogLevel.Logger.zig").impl;
 
 const CategoryMap = std.StringHashMap(*string_module.string);
 
@@ -11,15 +12,21 @@ var global_map = CategoryMap.init(global_alloc);
 
 pub const impl = struct {
     pub const LogCategory = struct {
-        data: *string_module.string,
+        name_: *string_module.string,
+        level_: log_level_module.LogLevel = .UNINITIALIZED,
+        minAllowedLevel_: log_level_module.LogLevel = .MAX_LEVEL,
+        propagateLevelMessageToParent: log_level_module.LogLevel = .MIN_LEVEL,
+        parent_: ?*const LogCategory = null,
+        firstChild_: ?*LogCategory = null,
+        nextChild_: ?*LogCategory = null,
 
         pub fn getOrCreate(name_str: []const u8) !LogCategory {
             var map = &global_map;
 
-            var canonical = try log_name_module.LogName.canonicalize(std.heap.page_allocator, name_str);
+            var canonical = try log_name_module.LogName.canonicalize(name_str);
 
             if (map.get(canonical.as_slice())) |existing| {
-                return .{ .data = existing };
+                return .{ .name_ = existing };
             }
 
             const canonical_str = try global_alloc.create(string_module.string);
@@ -28,11 +35,11 @@ pub const impl = struct {
 
             try map.put(key, canonical_str);
 
-            return .{ .data = canonical_str };
+            return .{ .name_ = canonical_str };
         }
 
         pub fn getName(self: *const LogCategory) []const u8 {
-            return self.data.as_slice();
+            return self.name_.as_slice();
         }
     };
 };

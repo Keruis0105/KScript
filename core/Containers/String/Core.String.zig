@@ -62,7 +62,11 @@ pub const impl = struct {
             }
 
             pub fn init_slice(slice: []const char_t) !@This() {
-                return init_str(slice.ptr);
+                var instance: @This() = .init();
+                if (slice.len > 0) {
+                    _ = try instance.append_slice(slice);
+                }
+                return instance;
             }
 
             pub fn init_copy(other: *const @This()) !@This() {

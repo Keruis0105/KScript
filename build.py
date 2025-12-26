@@ -12,7 +12,7 @@ PROJECTS = [
         "name": "test",
         "type": "exe",
         "sources": [
-            "core/test.logcategory.zig"
+            "core/test.File.Dir.zig"
         ],
     
         "module_paths": [

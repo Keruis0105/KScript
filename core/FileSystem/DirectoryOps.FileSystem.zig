@@ -81,7 +81,7 @@ pub const impl = struct {
         pub fn createSubdir(self: *@This(), name: []const u8) !*@This() {
             var full_path = try self.path.init_copy();
             _ = try full_path.append("\\");
-            _ = try full_path.append(name.ptr);
+            _ = try full_path.append_slice(name);
 
             const ok = c.CreateDirectoryA(full_path.as_slice().ptr, null);
             if (ok == 0) {
@@ -249,7 +249,7 @@ pub const impl = struct {
             var combined = try string_module.string.init_slice("");
             defer combined.deinit();
 
-            _ = try combined.append(cwd.ptr);
+            _ = try combined.append_slice(cwd);
             if (!std.mem.endsWith(u8, cwd, "\\")) {
                 _ = try combined.append("\\");
             }

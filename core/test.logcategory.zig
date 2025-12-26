@@ -12,13 +12,13 @@ pub fn main() !void {
     std.debug.print("cat3 name: {s}\n", .{cat3.getName()});
     std.debug.print("cat4 name: {s}\n", .{cat4.getName()});
 
-    std.debug.assert(@intFromPtr(cat1.data.cpointer()) == @intFromPtr(cat2.data.cpointer()));
+    std.debug.assert(@intFromPtr(cat1.name_.cpointer()) == @intFromPtr(cat2.name_.cpointer()));
     std.debug.print("PASS: cat1 and cat2 are the same instance\n", .{});
 
-    std.debug.assert(@intFromPtr(cat1.data.cpointer()) != @intFromPtr(cat3.data.cpointer()));
+    std.debug.assert(@intFromPtr(cat1.name_.cpointer()) != @intFromPtr(cat3.name_.cpointer()));
     std.debug.print("PASS: cat1 and cat3 are different instances\n", .{});
 
-    std.debug.assert(@intFromPtr(cat2.data.cpointer()) != @intFromPtr(cat4.data.cpointer()));
+    std.debug.assert(@intFromPtr(cat2.name_.cpointer()) != @intFromPtr(cat4.name_.cpointer()));
     std.debug.print("PASS: cat2 and cat4 are different instances\n", .{});
 
     std.debug.assert(std.mem.eql(u8, cat1.getName(), "foo.bar"));
