@@ -16,13 +16,17 @@ pub const impl = struct {
         pub fn getOrCreate(name_str: []const u8) !LogCategory {
             var map = &global_map;
 
-            const canonical_str = try log_name_module.LogName.canonicalize(global_alloc, name_str);
+            var canonical = try log_name_module.LogName.canonicalize(std.heap.page_allocator, name_str);
 
-            if (map.get(canonical_str.as_slice())) |existing| {
+            if (map.get(canonical.as_slice())) |existing| {
                 return .{ .data = existing };
             }
 
-            try map.put(canonical_str.as_slice(), canonical_str);
+            const canonical_str = try global_alloc.create(string_module.string);
+            canonical_str.* = try canonical.clone(global_alloc);
+            const key = try global_alloc.dupe(u8, canonical.as_slice());
+
+            try map.put(key, canonical_str);
 
             return .{ .data = canonical_str };
         }

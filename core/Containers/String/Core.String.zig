@@ -98,6 +98,22 @@ pub const impl = struct {
 
             //
 
+            pub fn clone(self: *const @This(), alloc: std.mem.Allocator) !@This() {
+                var out: @This() = .init();
+                if (self.size() == 0) return out;
+                if (self.isSmall()) {
+                    out.storage.as_small = self.storage.as_small;
+                } else {
+                    const len: usize = self.storage.as_ml.size_;
+                    out.storage.as_ml.data_ = (try alloc.alloc(char_t, len + 1)).ptr;
+                    string_trait.copy(out.storage.as_ml.data_, self.storage.as_ml.data_, len);
+                    out.storage.as_ml.size_ = len;
+                    out.storage.as_ml.setCapacity(len + 1, .isMedium);
+                    out.storage.as_ml.data_[len] = 0;
+                }
+                return out;
+            }
+
             pub fn size(self: *const @This()) usize {
                 return if (isSmall(self)) return @intCast(self.storage.as_small[max_small_size])
                     else self.storage.as_ml.size_;
@@ -173,15 +189,13 @@ pub const impl = struct {
                 return self;
             }
 
-            pub fn append_c(self: *@This(), c: char_t) !*@This() {
-                const cptr = c;
-                try if (self.isSmall()) self.appendSmall(@ptrCast(&cptr)) else self.appendMedium(@ptrCast(&cptr));
-                return self;
+            pub fn append_byte(self: *@This(), b: char_t) !*@This() {
+                var tmp: [1]char_t = .{b};
+                return try self.append_slice(&tmp);
             }
 
             pub fn append_slice(self: *@This(), str_slice: []const char_t) !*@This() {
-                const s = str_slice;
-                try if (self.isSmall()) self.appendSmall(s.ptr) else self.appendMedium(s.ptr);
+                try if (self.isSmall()) self.appendSmallSlice(str_slice) else self.appendMediumSlice(str_slice);
                 return self;
             }
 
@@ -348,6 +362,53 @@ pub const impl = struct {
 
                 string_trait.copy(@ptrCast(&self.storage.as_ml.data_[old_size]), str, other_len);
 
+                self.storage.as_ml.size_ = new_size;
+                self.storage.as_ml.data_[new_size] = 0;
+            }
+
+            fn appendSmallSlice(self: *@This(), slice: []const char_t) !void {
+                const other_len = slice.len;
+                if (other_len == 0) return;
+
+                const old_size = self.size();
+                const new_size = old_size + other_len;
+
+                if (new_size < max_small_size) {
+                    string_trait.copy(
+                        @ptrCast(&self.storage.as_small[old_size]),
+                        slice.ptr,
+                        other_len,
+                    );
+                    self.setSmallSize(new_size);
+                    return;
+                }
+
+                try self.reserverSmall(new_size);
+                string_trait.copy(
+                    self.storage.as_ml.data_ + old_size,
+                    slice.ptr,
+                    other_len,
+                );
+                self.storage.as_ml.size_ = new_size;
+                self.storage.as_ml.data_[new_size] = 0;
+            }
+
+            fn appendMediumSlice(self: *@This(), slice: []const char_t) !void {
+                const other_len = slice.len;
+                if (other_len == 0) return;
+
+                const old_size = self.size();
+                const new_size = old_size + other_len;
+
+                if (new_size > self.capacity()) {
+                    _ = try self.reserve(new_size);
+                }
+
+                string_trait.copy(
+                    self.storage.as_ml.data_ + old_size,
+                    slice.ptr,
+                    other_len,
+                );
                 self.storage.as_ml.size_ = new_size;
                 self.storage.as_ml.data_[new_size] = 0;
             }

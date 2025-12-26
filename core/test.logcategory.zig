@@ -2,27 +2,28 @@ const std = @import("std");
 const log_category_module = @import("Logger/LogCategory.Logger.zig");
 
 pub fn main() !void {
-    //var allocator = std.heap.page_allocator;
-
     const cat1 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar");
+    const cat2 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar");
+    const cat3 = try log_category_module.impl.LogCategory.getOrCreate("baz.qux");
+    const cat4 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar.baz");
 
     std.debug.print("cat1 name: {s}\n", .{cat1.getName()});
-
-    const cat2 = try log_category_module.impl.LogCategory.getOrCreate("foo.bar");
     std.debug.print("cat2 name: {s}\n", .{cat2.getName()});
-
-    const cat3 = try log_category_module.impl.LogCategory.getOrCreate("baz.qux");
     std.debug.print("cat3 name: {s}\n", .{cat3.getName()});
+    std.debug.print("cat4 name: {s}\n", .{cat4.getName()});
 
-    if (@intFromPtr(cat1.data.cpointer()) == @intFromPtr(cat2.data.cpointer())) {
-        std.debug.print("cat1 and cat2 are the same instance (as expected)\n", .{});
-    } else {
-        std.debug.print("ERROR: cat1 and cat2 should be the same instance!\n", .{});
-    }
+    std.debug.assert(@intFromPtr(cat1.data.cpointer()) == @intFromPtr(cat2.data.cpointer()));
+    std.debug.print("PASS: cat1 and cat2 are the same instance\n", .{});
 
-    if (@intFromPtr(cat1.data.cpointer()) != @intFromPtr(cat3.data.cpointer())) {
-        std.debug.print("cat1 and cat3 are different instances (as expected)\n", .{});
-    } else {
-        std.debug.print("ERROR: cat1 and cat3 should be different instances!\n", .{});
-    }
+    std.debug.assert(@intFromPtr(cat1.data.cpointer()) != @intFromPtr(cat3.data.cpointer()));
+    std.debug.print("PASS: cat1 and cat3 are different instances\n", .{});
+
+    std.debug.assert(@intFromPtr(cat2.data.cpointer()) != @intFromPtr(cat4.data.cpointer()));
+    std.debug.print("PASS: cat2 and cat4 are different instances\n", .{});
+
+    std.debug.assert(std.mem.eql(u8, cat1.getName(), "foo.bar"));
+    std.debug.assert(std.mem.eql(u8, cat3.getName(), "baz.qux"));
+    std.debug.assert(std.mem.eql(u8, cat4.getName(), "foo.bar.baz"));
+
+    std.debug.print("All checks passed!\n", .{});
 }
