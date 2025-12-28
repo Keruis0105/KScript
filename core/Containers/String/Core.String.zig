@@ -1,6 +1,7 @@
 const std = @import("std");
 const category_module = @import("Category.String.zig").impl;
 const box_module = @import("Box.String.zig").impl;
+const shared_block_module = @import("SharedBlock.String.zig").impl;
 
 pub const impl = struct {
     pub fn Core(comptime Tr: type, comptime Alloc: type) type {
@@ -13,6 +14,7 @@ pub const impl = struct {
             pub const alloc_t = Alloc;
 
             const box_t = box_module.Box(Tr);
+            const shared_t = shared_block_module.SharedBlock(Tr, alloc_t);
 
             storage: box_t.Storage = undefined,    
 
@@ -71,8 +73,17 @@ pub const impl = struct {
 
             pub fn init_copy(other: *const @This()) !@This() {
                 var instance: @This() = .{};
-                try if (other.isSmall()) instance.copySmall(other)
-                    else instance.copyMedium(other);
+                switch (other.getCategory()) {
+                    .isSmall => {
+                        instance.copySmall(other);
+                    },
+                    .isMedium => {
+                        try instance.copyMedium(other);
+                    },
+                    .isShared => {
+                        try instance.copyShared(other);
+                    }
+                }
                 return instance;
             }
 
@@ -91,11 +102,19 @@ pub const impl = struct {
             }
 
             pub fn deinit(self: *@This()) void {
-                if (!self.isSmall()) {
-                    const op: ?pointer_t = self.storage.as_ml.data_;
-                    if (op != null) {
-                        var alloc: alloc_t = .{};
-                        alloc.deallocator(self.storage.as_ml.data_, self.storage.as_ml.capacity() + 1);
+                switch (self.getCategory()) {
+                    .isSmall => {
+
+                    },
+                    .isMedium => {
+                        const op: ?pointer_t = self.storage.as_ml.data_;
+                        if (op != null) {
+                            alloc_t.deallocator(self.storage.as_ml.data_, self.storage.as_ml.capacity() + 1);
+                        }
+                    },
+                    .isShared => {
+                        const block = self.getSharedBlock();
+                        block.release(self.storage.as_ml.capacity() + 1);
                     }
                 }
             }
@@ -105,16 +124,36 @@ pub const impl = struct {
             pub fn clone(self: *const @This(), alloc: std.mem.Allocator) !@This() {
                 var out: @This() = .init();
                 if (self.size() == 0) return out;
-                if (self.isSmall()) {
-                    out.storage.as_small = self.storage.as_small;
-                } else {
-                    const len: usize = self.storage.as_ml.size_;
-                    out.storage.as_ml.data_ = (try alloc.alloc(char_t, len + 1)).ptr;
-                    string_trait.copy(out.storage.as_ml.data_, self.storage.as_ml.data_, len);
-                    out.storage.as_ml.size_ = len;
-                    out.storage.as_ml.setCapacity(len + 1, .isMedium);
-                    out.storage.as_ml.data_[len] = 0;
+                switch (self.getCategory()) {
+                    .isSmall => {
+                        out.storage.as_small = self.storage.as_small;
+                    },
+                    .isMedium => {
+                        const len: usize = self.storage.as_ml.size_;
+                        out.storage.as_ml.data_ = (try alloc.alloc(char_t, len + 1)).ptr;
+                        string_trait.copy(out.storage.as_ml.data_, self.storage.as_ml.data_, len);
+                        out.storage.as_ml.size_ = len;
+                        out.storage.as_ml.setCapacity(len + 1, .isMedium);
+                        out.storage.as_ml.data_[len] = 0;
+                    },
+                    .isShared => {
+                        const block = self.getSharedBlock();
+                        block.retain();
+                        out.storage.as_ml.data_ = self.storage.as_ml.data_;
+                        out.storage.as_ml.size_ = self.storage.as_ml.size_;
+                        out.storage.as_ml.capcaity_ = self.storage.as_ml.capcaity_;
+                    }
                 }
+                return out;
+            }
+
+            pub fn shared(self: *const @This()) !@This() {
+                var out: @This() = .init();
+                const block = try shared_t
+                    .createSharedBlock(self.pointer());
+                out.storage.as_ml.data_ = @ptrCast(block);
+                out.storage.as_ml.size_ = self.size();
+                out.storage.as_ml.setCapacity(self.capacity(), .isShared);
                 return out;
             }
 
@@ -203,8 +242,6 @@ pub const impl = struct {
                 return self;
             }
 
-            //
-
             pub fn pointer(self: *@This()) pointer_t {
                 if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
                     else return self.storage.as_ml.data_;
@@ -214,6 +251,8 @@ pub const impl = struct {
                 if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
                 else return self.storage.as_ml.data_;
             }
+
+            //
 
             fn reset(self: *@This()) void {
                 setSmallSize(self, 0);
@@ -229,6 +268,15 @@ pub const impl = struct {
                 return box_t.category(&self.storage) == .isSmall;
             }
 
+            fn getCategory(self: *const @This()) category_module.Category {
+                return box_t.category(&self.storage);
+            }
+
+            fn getSharedBlock(self: *const @This()) *shared_t {
+                std.debug.assert(self.getCategory() == .isShared);
+                return @ptrCast(@alignCast(self.storage.as_ml.data_));
+            }
+
             fn initSmall(self: *@This(), d: const_pointer_t, s: usize) void {
                 std.debug.assert(s < max_small_size);
                 string_trait.copy(&self.storage.as_small, d, s);
@@ -236,8 +284,7 @@ pub const impl = struct {
             }
 
             fn initMedium(self: *@This(), d: const_pointer_t, s: usize) !void {
-                var alloc: alloc_t = .{};
-                self.storage.as_ml.data_ = try alloc.allocator(s + 1);
+                self.storage.as_ml.data_ = try alloc_t.allocator(s + 1);
                 string_trait.copy(self.storage.as_ml.data_, d, s);
                 self.storage.as_ml.data_[s] = 0;
                 self.storage.as_ml.size_ = s;
@@ -245,18 +292,28 @@ pub const impl = struct {
             }
 
             fn copySmall(self: *@This(), other: *const @This()) void {
+                std.debug.assert(other.getCategory() == .isSmall);
                 self.storage.as_small = other.storage.as_small;
             }
 
             fn copyMedium(self: *@This(), other: *const @This()) !void {
+                std.debug.assert(other.getCategory() == .isMedium);
                 const other_len: usize = other.storage.as_ml.size_;
-                var alloc: alloc_t = .{};
-                self.storage.as_ml.data_ = try alloc.allocator(other_len + 1);
+                self.storage.as_ml.data_ = try alloc_t.allocator(other_len + 1);
                 string_trait.copy(self.storage.as_ml.data_, other.storage.as_ml.data_, other_len);
                 self.storage.as_ml.size_ = other_len;
                 self.storage.as_ml.setCapacity(other_len + 1, .isMedium);
                 self.storage.as_ml.data_[other_len] = 0;
-            } 
+            }
+
+            fn copyShared(self: *@This(), other: *const @This()) !void {
+                std.debug.assert(other.getCategory() == .isShared);
+                const block = other.getSharedBlock();
+                block.retain();
+                self.storage.as_ml.data_ = other.storage.as_ml.data_;
+                self.storage.as_ml.size_ = other.storage.as_ml.size_;
+                self.storage.as_ml.capcaity_ = other.storage.as_ml.capcaity_;
+            }
 
             fn clearSmall(self: *@This()) void {
                 self.storage.as_small = 0;
@@ -275,8 +332,7 @@ pub const impl = struct {
 
                 const old_size: usize = self.size();
 
-                var alloc: alloc_t = .{};
-                const mallocPtr: pointer_t = try alloc.allocator(s + 1);
+                const mallocPtr: pointer_t = try alloc_t.allocator(s + 1);
                 string_trait.copy(mallocPtr, &self.storage.as_small, old_size);
                 self.storage.as_ml.data_ = mallocPtr;
                 self.storage.as_ml.size_ = old_size;
@@ -289,10 +345,9 @@ pub const impl = struct {
 
                 const old_size: usize = self.size();
 
-                var alloc: alloc_t = .{};
-                const mallocPtr: pointer_t = try alloc.allocator(s + 1);
+                const mallocPtr: pointer_t = try alloc_t.allocator(s + 1);
                 string_trait.copy(mallocPtr, self.storage.as_ml.data_, old_size);
-                alloc.deallocator(self.storage.as_ml.data_, old_size + 1);
+                alloc_t.deallocator(self.storage.as_ml.data_, old_size + 1);
                 self.storage.as_ml.data_ = mallocPtr;
                 self.storage.as_ml.size_ = old_size;
                 self.storage.as_ml.setCapacity(s, .isMedium);

@@ -8,6 +8,7 @@ pub fn main() !void {
     var t1 = try dir.init(s1);
     const d1 = try t1.scan();
     const ie1 = try d1.getInfo();
+    _ = try t1.createSubdir("tt");
     if (d1.err) |e| {
         std.debug.print("Scan error: {}\n", .{e});
     } else {
