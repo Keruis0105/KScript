@@ -12,15 +12,16 @@ PROJECTS = [
         "name": "test",
         "type": "exe",
         "sources": [
-            "core/test.logcategory.zig"
+            "core/test.strlen.zig"
         ],
-    
+        "asm_sources": [
+            "core/Backend/String/strlen_simd_allwidths_x86_x64.asm"
+        ],
         "module_paths": [
-            "core" 
+            "core"
         ],
     }
 ]
-
 OUT_DIR = Path("build")
 
 TARGETS = {
@@ -56,13 +57,37 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 # =============================
 # 构建函数
 # =============================
+
+def compile_asm(asm_path: Path) -> Path:
+    obj_path = OUT_DIR / (asm_path.stem + ".obj")
+
+    cmd = [
+        "nasm",
+        "-f", "win64",
+        "-D__OS__=WINDOWS",
+        asm_path,
+        "-o", obj_path
+    ]
+
+    print("Assembling:", " ".join(map(str, cmd)))
+    subprocess.run(cmd, check=True)
+
+    return obj_path
+
 def build_project(proj):
     name = proj["name"]
     typ = proj["type"]
     sources = proj["sources"]
+    asm_sources = proj.get("asm_sources", [])
     module_paths = proj.get("module_paths", [])
 
     out_file = OUT_DIR / (name + (".lib" if typ == "lib" else ".exe"))
+
+    # ========= 先编译 asm =========
+    obj_files = []
+    for asm in asm_sources:
+        obj = compile_asm(Path(asm))
+        obj_files.append(obj)
 
     cmd = ["zig"]
 
@@ -73,10 +98,14 @@ def build_project(proj):
     else:
         raise ValueError(f"Unknown type: {typ}")
 
-    # 入口文件
-    cmd.extend([sources[0]])
+    # ========= zig 入口 =========
+    cmd.append(sources[0])
 
-    # 模块路径
+    # ========= 链接 asm obj =========
+    for obj in obj_files:
+        cmd.append(str(obj))
+
+    # ========= 模块路径 =========
     for path in module_paths:
         cmd.extend(["-I", path])
 
@@ -85,12 +114,14 @@ def build_project(proj):
         "-O", MODE,
         f"-femit-bin={out_file}",
         "-lc",
-        "-lShlwapi",
-        "-I ."
+        "-I", "."
     ])
 
+    if typ == "exe":
+        cmd.append("-lShlwapi")
+
     if typ == "lib":
-        cmd.extend(["-lc", "-luser32", "-lkernel32"])
+        cmd.extend(["-luser32", "-lkernel32"])
 
     print(f"\n=== Building {name} ({typ}) ===")
     print("Running:", " ".join(map(str, cmd)))
@@ -106,11 +137,7 @@ def build_project(proj):
     if typ == "exe" and args.run:
         exe_cmd = [out_file] + args.exe_args
         print(f"\n=== Running {out_file} ===")
-        try:
-            subprocess.run(exe_cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Execution failed for {out_file}!")
-            sys.exit(e.returncode)
+        subprocess.run(exe_cmd, check=True)
 
 # =============================
 # 构建所有项目
