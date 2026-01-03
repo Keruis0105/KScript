@@ -133,7 +133,8 @@ NT_TailPart_%1:
     ret
 %undef VEC_MASK_
 %undef VEC_SIZE_
-%undef LOAD_
+%undef STORE_TAIL_A_
+%undef STORE_TAIL_U_
 %undef INC_
 %endmacro
 

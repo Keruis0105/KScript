@@ -1,76 +1,72 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <inttypes.h>
 #include <string.h>
-#include <stdalign.h>
-#include <x86intrin.h>
 
-void* memset_sse2_x86_x64(void* dst, int c, size_t n);
-void* memset_avx2_x86_x64(void* dst, int c, size_t n);
+// 声明汇编函数
+extern void* memset_avx2_x86_x64(void* dest, unsigned char value, int count);
 
-#define ITERS 50000
-
-static inline uint64_t rdtsc(void) {
-    unsigned aux;
-    return __rdtscp(&aux);
+void check_memory(unsigned char* buf, int count, unsigned char expected) {
+    for (int i = 0; i < count; i++) {
+        if (buf[i] != expected) {
+            printf("Memory check failed at offset 0x%X: got 0x%02X, expected 0x%02X\n",
+                    i, buf[i], expected);
+            return;
+        }
+    }
+    printf("Memory check passed for %d bytes\n", count);
 }
 
-int main(void) {
-    alignas(64) uint8_t buf_libc[1024];
-    alignas(64) uint8_t buf_sse [1024];
-    alignas(64) uint8_t buf_avx [1024];
+int main() {
+    const int GUARD = 16; // 哨兵区大小
+    const int BUF_SIZE = 0x400000; // 4 MB
 
-    volatile uint8_t sink = 0;
-
-    uint64_t total_libc = 0;
-    uint64_t total_sse  = 0;
-    uint64_t total_avx  = 0;
-
-    for (size_t n = 0; n <= 1024; n++) {
-
-        uint64_t t0, t1;
-
-        // ---- libc ----
-        t0 = rdtsc();
-        for (int i = 0; i < ITERS; i++) {
-            memset(buf_libc, 0x5A, n);
-            sink ^= buf_libc[0];
-        }
-        t1 = rdtsc();
-        total_libc += (t1 - t0);
-
-        // ---- sse2 ----
-        t0 = rdtsc();
-        for (int i = 0; i < ITERS; i++) {
-            memset_sse2_x86_x64(buf_sse, 0x5A, n);
-            sink ^= buf_sse[0];
-        }
-        t1 = rdtsc();
-        total_sse += (t1 - t0);
-
-        // ---- avx2 ----
-        t0 = rdtsc();
-        for (int i = 0; i < ITERS; i++) {
-            memset_avx2_x86_x64(buf_avx, 0x5A, n);
-            sink ^= buf_avx[0];
-        }
-        t1 = rdtsc();
-        total_avx += (t1 - t0);
+    // 分配内存：前后各加16字节保护区
+    unsigned char* raw = malloc(BUF_SIZE + 2 * GUARD);
+    if (!raw) {
+        perror("malloc failed");
+        return 1;
     }
 
-    // 注意：n 从 0..512 共 513 次
-    const double norm = (double)(ITERS * 513);
+    unsigned char* buf = raw + GUARD;
 
-    double avg_libc = total_libc / norm;
-    double avg_sse  = total_sse  / norm;
-    double avg_avx  = total_avx  / norm;
+    // 初始化哨兵区
+    memset(raw, 0xFE, GUARD);                // 前哨兵
+    memset(buf + BUF_SIZE, 0xFE, GUARD);     // 后哨兵
 
-    printf("libc avg cycles : %.3f\n", avg_libc);
-    printf("sse2 avg cycles : %.3f\n", avg_sse);
-    printf("avx2 avg cycles : %.3f\n", avg_avx);
+    // --- 小块测试 ---
+    printf("Testing small block...\n");
+    void* r1 = memset_avx2_x86_x64(buf, 0xAA, 8);
+    printf("Returned pointer: %p, expected: %p\n", r1, buf);
+    check_memory(buf, 8, 0xAA);
 
-    printf("speedup sse / libc : %.2fx\n", avg_libc / avg_sse);
-    printf("speedup avx / libc : %.2fx\n", avg_libc / avg_avx);
+    // 检查哨兵是否被改写
+    for (int i = 0; i < GUARD; i++) {
+        if (raw[i] != 0xFE) {
+            printf("Front guard overwritten at offset %d\n", i);
+        }
+        if (buf[BUF_SIZE + i] != 0xFE) {
+            printf("Back guard overwritten at offset %d\n", i);
+        }
+    }
 
-    if (sink == 123) puts("ignore");
+    // --- 大块测试 ---
+    printf("\nTesting large block...\n");
+    void* r2 = memset_avx2_x86_x64(buf, 0x55, BUF_SIZE); // 超过阈值
+    printf("Returned pointer: %p (should be special value if your asm sets it)\n", r2);
+    check_memory(buf, BUF_SIZE, 0x55);
+
+    // 检查哨兵
+    for (int i = 0; i < GUARD; i++) {
+        if (raw[i] != 0xFE) {
+            printf("Front guard overwritten at offset %d\n", i);
+        }
+        if (buf[BUF_SIZE + i] != 0xFE) {
+            printf("Back guard overwritten at offset %d\n", i);
+        }
+    }
+
+    free(raw);
     return 0;
 }
