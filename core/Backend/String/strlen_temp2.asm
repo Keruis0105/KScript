@@ -82,8 +82,8 @@ GLOBAL %1
     LOAD_VEC_A
     CMP_EQ
     MOV_MASK
+    add rax, VEC_SIZE
     shr edx, cl
-    shl edx, cl
     TEST_MASK
     jnz .found_%1
 
