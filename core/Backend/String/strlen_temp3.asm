@@ -1,3 +1,10 @@
+;extern fn strlen_8bit_sse2_x86_x64(ptr: [*]const u8) usize;
+;extern fn strlen_16bit_sse2_x86_x64(ptr: [*]const u8) usize;
+;extern fn strlen_32bit_sse2_x86_x64(ptr: [*]const u8) usize;
+;extern fn strlen_8bit_avx2_x86_x64(ptr: [*]const u8) usize;
+;extern fn strlen_16bit_avx2_x86_x64(ptr: [*]const u8) usize;
+;extern fn strlen_32bit_avx2_x86_x64(ptr: [*]const u8) usize;
+
 BITS 64
 DEFAULT REL
 
@@ -15,7 +22,6 @@ DEFAULT REL
 %define TYPE_WORD  2
 %define TYPE_DWORD 4
 
-%define SCALAR 0
 %define SIMD_SSE 16
 %define SIMD_AVX 32
 
@@ -28,6 +34,13 @@ DEFAULT REL
 
 SECTION .text
 %macro DECL_STRLEN 3
+%if %3 = SIMD_SSE
+    %define ALIGN_SIZE 16
+%elif %3 = SIMD_AVX
+    %define ALIGN_SIZE 32
+%endif
+ALIGN ALIGN_SIZE
+%undef ALIGN_SIZE
 GLOBAL %1
 %1:
     mov r8, ARG_PTR_R
@@ -40,9 +53,7 @@ GLOBAL %1
     %elif %2 = TYPE_DWORD
         %define BYTE_OFFSET_TO_ELEMENT_COUNT shr rax, 2
     %endif
-    %if %3 = SCALAR
-
-    %elif %3 = SIMD_SSE
+    %if %3 = SIMD_SSE
         %define VEC_SIZE 16
         %define BLOCK_SIZE 32
         %define VEC_XOR pxor xmm0, xmm0
