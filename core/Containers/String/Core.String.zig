@@ -243,13 +243,21 @@ pub const impl = struct {
             }
 
             pub fn pointer(self: *@This()) pointer_t {
-                if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
-                    else return self.storage.as_ml.data_;
+                switch (self.getCategory()) {
+                    .isSmall => {
+                        return @ptrCast(&self.storage.as_small[0]);
+                    },
+                    .isMedium => {
+                        return self.storage.as_ml.data_;
+                    },
+                    .isShared => {
+                        return self.storage.as_ml.data_.data_;
+                    }
+                }
             }
 
             pub fn cpointer(self: @This()) const_pointer_t {
-                if (self.isSmall()) return @ptrCast(&self.storage.as_small[0])
-                else return self.storage.as_ml.data_;
+                return self.pointer();
             }
 
             //

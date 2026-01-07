@@ -17,6 +17,9 @@ PROJECTS = [
         "asm_sources": [
             "core/Backend/String/strlen_simd_allwidths_x86_x64.asm"
         ],
+        "cpp_sources": [
+            "core/Backend/String/strlen_scalar.cpp"
+        ],
         "module_paths": [
             "core"
         ],
@@ -74,23 +77,51 @@ def compile_asm(asm_path: Path) -> Path:
 
     return obj_path
 
+def compile_cpp_or_c(src_path: Path, cpp: bool = True) -> Path:
+    obj_path = OUT_DIR / (src_path.stem + ".o")
+
+    compiler = "g++" if cpp else "gcc"
+
+    cmd = [
+        compiler,
+        "-c",
+        "-O2",             # Release 优化，可根据 MODE 改
+        str(src_path),
+        "-o",
+        str(obj_path)
+    ]
+
+    print("Compiling:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+    return obj_path
+
 def build_project(proj):
     name = proj["name"]
     typ = proj["type"]
-    sources = proj["sources"]
+    sources = proj.get("sources", [])
     asm_sources = proj.get("asm_sources", [])
+    c_sources = proj.get("c_sources", [])
+    cpp_sources = proj.get("cpp_sources", [])
     module_paths = proj.get("module_paths", [])
 
     out_file = OUT_DIR / (name + (".lib" if typ == "lib" else ".exe"))
 
-    # ========= 先编译 asm =========
+    # ========= 编译 asm =========
     obj_files = []
     for asm in asm_sources:
         obj = compile_asm(Path(asm))
         obj_files.append(obj)
 
-    cmd = ["zig"]
+    # ========= 编译 C/C++ =========
+    for csrc in c_sources:
+        obj = compile_cpp_or_c(Path(csrc), cpp=False)
+        obj_files.append(obj)
+    for cppsrc in cpp_sources:
+        obj = compile_cpp_or_c(Path(cppsrc), cpp=True)
+        obj_files.append(obj)
 
+    # ========= zig 入口 =========
+    cmd = ["zig"]
     if typ == "lib":
         cmd.append("build-lib")
     elif typ == "exe":
@@ -98,10 +129,11 @@ def build_project(proj):
     else:
         raise ValueError(f"Unknown type: {typ}")
 
-    # ========= zig 入口 =========
-    cmd.append(sources[0])
+    # 默认入口源文件
+    if sources:
+        cmd.append(sources[0])
 
-    # ========= 链接 asm obj =========
+    # ========= 链接 obj 文件 =========
     for obj in obj_files:
         cmd.append(str(obj))
 
@@ -119,7 +151,6 @@ def build_project(proj):
 
     if typ == "exe":
         cmd.append("-lShlwapi")
-
     if typ == "lib":
         cmd.extend(["-luser32", "-lkernel32"])
 
