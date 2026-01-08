@@ -14,10 +14,10 @@ pub const impl = struct {
             pub const category_extract_mask: usize = bit_module.shift.shl(
                 bit_module.mask.low(2), 6
             );
-            pub const capacity_extract_mask: usize = bit_module.shift.shl(
-                bit_module.ops.not(category_extract_mask),
+            pub const capacity_extract_mask: usize = bit_module.ops.not(
+                bit_module.shift.shl(category_extract_mask,
                 category_shift
-            );
+            ));
 
             const MediumLarge = extern struct {
                 data_:     pointer_t,
