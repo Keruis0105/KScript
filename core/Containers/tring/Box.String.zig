@@ -37,7 +37,7 @@ pub const impl = struct {
 
             pub const medium_size: usize = @sizeOf(Medium) / type_size;
 
-            const Storage = union {
+            pub const Storage = union {
                 as_small: [medium_size]char_t,
                 as_byte: [@sizeOf(Medium)]u8,
                 as_ml: Medium
