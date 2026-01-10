@@ -14,16 +14,30 @@ pub const impl = struct {
             storage: box_t.Storage = undefined,
 
             pub fn init() @This() {
-                var instance: @This() = .{};
-                instance.reset();
-                return instance;
+                return .{
+                    .storage = box_t.initEmpty()
+                };
             }
 
-            fn reset(self: *@This()) void {
-                setSmallSize(self, 0);
+            pub fn init_c(c: char_t) @This() {
+                var self = @This() {
+                    .storage = box_t.initEmpty()
+                };
+
+
             }
 
-            fn
+            fn is_small_mode(self: *const @This()) bool {
+                return box_t.category(self.storage).isSmall();
+            }
+
+            fn assign_init_c(self: *@This(), c: char_t) void {
+                if (self.is_small_mode()) {
+                    var buffer = self.storage.as_small;
+                    const buf_size = buffer.size();
+                    
+                }
+            }
         };
     }
 };
