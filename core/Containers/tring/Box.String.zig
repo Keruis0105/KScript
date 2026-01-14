@@ -6,7 +6,6 @@ pub const impl = struct {
         return struct {
             pub const char_t = Tr.char_t;
             pub const pointer_t = Tr.pointer_t;
-            pub const size_type = Tr.size_type;
             pub const type_size = Tr.type_size;
 
             const last_byte: usize = @sizeOf(Large) - 1;
@@ -31,10 +30,10 @@ pub const impl = struct {
 
             const Large = struct {
                 data_: pointer_t,
-                size_: size_type,
+                size_: usize,
                 capacity_: usize,
 
-                pub fn size(self: *Large) size_type {
+                pub fn size(self: *Large) usize {
                     return self.size_;
                 }
 
@@ -90,7 +89,7 @@ pub const impl = struct {
                 }
 
                 pub fn headerFromData(p: pointer_t) *RcHeader {
-                    return @ptrCast(p - rc_header_size);
+                    return @alignCast(@ptrCast(p - rc_header_size));
                 }
 
                 pub fn retain(comptime Atomic: bool, self: *RcHeader) void {

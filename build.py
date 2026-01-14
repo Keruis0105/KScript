@@ -12,13 +12,17 @@ PROJECTS = [
         "name": "test",
         "type": "exe",
         "sources": [
-            "core/test.strlen.zig"
+            "core/test.string.zig"
         ],
         "asm_sources": [
-            "core/Backend/String/strlen_simd_allwidths_x86_x64.asm"
+            #"core/Backend/String/strcpy_simd_x86_x64.asm",
+            "core/Containers/tring/Backend/strlen_simd_x86_x64.asm",
+            #"core/Backend/String/strset_simd_x86_x64.asm"
         ],
         "cpp_sources": [
-            "core/Backend/String/strlen_scalar.cpp"
+            "core/Containers/tring/Backend/strlen_scalar.cpp",
+            "core/Containers/tring/Backend/strset_scalar.cpp",
+            "core/Containers/tring/Backend/strcpy_scalar.cpp"
         ],
         "module_paths": [
             "core"
@@ -85,7 +89,8 @@ def compile_cpp_or_c(src_path: Path, cpp: bool = True) -> Path:
     cmd = [
         compiler,
         "-c",
-        "-O2",             # Release 优化，可根据 MODE 改
+        "-O2",
+        "-std=c++23",
         str(src_path),
         "-o",
         str(obj_path)

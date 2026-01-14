@@ -17,7 +17,6 @@ pub const impl = struct {
 
         pub const ModeTag = enum(mode_t) {
             Inline = 0b00,
-            View   = 0b01,
             Heap   = 0b10,
             Shared = 0b11
         };
@@ -33,14 +32,15 @@ pub const impl = struct {
         pub fn tag(self: Mode) ModeTag {
             comptime {
                 std.debug.assert(@intFromEnum(ModeTag.Inline)  == 0);
-                std.debug.assert(@intFromEnum(ModeTag.View)  == 1);
                 std.debug.assert(@intFromEnum(ModeTag.Heap) == 2);
                 std.debug.assert(@intFromEnum(ModeTag.Shared) == 3);
             }
 
+            const storage_bit: u2 = @intCast(@intFromEnum(self.storage));
+            const ownership_bit: u2 = @intCast(@intFromEnum(self.ownership));
+
             return @enumFromInt(
-                (@intFromEnum(self.storage) << 1) | 
-                @intFromEnum(self.ownership)
+                (storage_bit << 1) | ownership_bit
             );
         }
     };

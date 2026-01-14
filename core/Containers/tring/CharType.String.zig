@@ -15,6 +15,14 @@ pub const impl = struct {
         return type_table[@intFromEnum(id)];
     }
 
+    pub fn CharTypeIdOf(comptime T: type) CharTypeId {
+        inline for (type_table, 0..) |Ty, i| {
+            if (T == Ty)
+                return @enumFromInt(i);
+        }
+        @compileError("Unsupported char type");
+    }
+
     pub fn SizeOfChar(comptime id: CharTypeId) usize {
         return @sizeOf(CharTypeOf(id));
     }
