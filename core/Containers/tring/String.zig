@@ -25,6 +25,12 @@ pub const impl = struct {
                 };
             }
 
+            pub fn init_str(alloc: std.mem.Allocator, str: const_pointer_t) !@This() {
+                return .{
+                    .core = try .init_str(alloc, str)
+                };
+            }
+
             pub fn pointer(self: *@This()) pointer_t {
                 return self.core.pointer();
             }
