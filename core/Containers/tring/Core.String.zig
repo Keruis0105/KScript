@@ -14,6 +14,7 @@ pub const impl = struct {
             const box_t = box_module.Box(Tr);
             const box_data_t = box_t.box_data_t;
             const cache_buffer_t = box_t.cache_buffer_t;
+            const box_shared_t = box_t.box_shared_t;
 
             storage: box_t.Storage = box_t.initEmpty(),
 
@@ -43,19 +44,104 @@ pub const impl = struct {
                 return self;
             }
 
-            pub fn pointer(self: *@This()) pointer_t {
+            pub fn init_len(alloc: std.mem.Allocator, str: const_pointer_t, len: usize) !@This() {
+                var self: @This() = .{};
+                if (len >= box_t.max_cache_size) {
+                    self.storage.as_large.setCapacity(0, .{
+                        .storage = .Large,
+                        .ownership = .Owning
+                    });
+                }
+                try self.assign_init_str(alloc, str, len);
+                return self;
+            }
+
+            pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
                 switch (box_t.modeTag(&self.storage)) {
-                    .Inline => return self.storage.as_cache.pointer(),
-                    .Heap, .Shared => 
-                        return self.storage.as_large.pointer()
+                    .Inline => {},
+                    .Heap => alloc.free(self.storage.as_large.pointer()),
+                    .Shared => {
+                        const rc = box_t.RcHeader.headerFromData(self.storage.as_shared.pointer());
+                        if (@atomicLoad(usize, &rc.refcount_, .seq_cst) > 1) {
+                            box_t.RcHeader.release(true, rc);
+                        } else {
+                            alloc.free(rc);
+                        }
+                    }
                 }
             }
 
-            pub fn size(self: *@This()) usize {
+            pub fn pointer(self: *@This()) pointer_t {
+                switch (box_t.modeTag(&self.storage)) {
+                    .Inline => return self.storage.as_cache.pointer(),
+                    .Heap => return self.storage.as_large.pointer(),
+                    .Shared => return self.storage.as_shared.pointer()
+                }
+            }
+
+            pub fn const_pointer(self: *const @This()) const_pointer_t {
+                switch (box_t.modeTag(&self.storage)) {
+                    .Inline => return self.storage.as_cache.const_pointer(),
+                    .Heap => return self.storage.as_large.const_pointer(),
+                    .Shared => return self.storage.as_shared.const_pointer()
+                }
+            }
+
+            pub fn size(self: *const @This()) usize {
                 switch (box_t.modeTag(&self.storage)) {
                     .Inline => return self.storage.as_cache.size(),
-                    .Heap, .Shared => 
-                        return self.storage.as_large.size()
+                    .Heap => return self.storage.as_large.size(),
+                    .Shared => return self.storage.as_shared.size()
+                }
+            }
+
+            pub fn capacity(self: *const @This()) usize {
+                switch (box_t.modeTag(&self.storage)) {
+                    .Inline => return self.storage.as_cache.capacity(),
+                    .Heap => return self.storage.as_large.capacity(),
+                    .Shared => return self.storage.as_shared.capacity()
+                }
+            }
+
+            pub fn empty(self: *const @This()) bool {
+                switch (box_t.modeTag(&self.storage)) {
+                    .Inline => return self.storage.as_cache.size() == 0,
+                    .Heap => return self.storage.as_large.size() == 0,
+                    .Shared => return self.storage.as_shared.size() == 0
+                }
+            }
+
+            pub fn clear(self: *@This(), alloc: std.mem.Allocator) !void {
+                switch (box_t.modeTag(&self.storage)) {
+                    .Inline => {
+                        var cache: *cache_buffer_t = &self.storage.as_cache;
+                        cache.pointer()[box_t.max_cache_size] = 0;
+                        cache.pointer()[0] = 0;
+                    },
+                    .Heap => {
+                        var large: *box_data_t = &self.storage.as_large;
+                        large.size_ = 0;
+                        large.pointer()[0] = 0;
+                    },
+                    .Shared => {
+                        var shared: *box_shared_t = &self.storage.as_shared;
+                        var rc: *box_t.RcHeader = box_t.RcHeader.headerFromData(shared.pointer());
+                        if (@atomicLoad(usize, &rc.refcount_, .seq_cst) > 1) {
+                            const old_size = rc.capacity();
+                            var new_data = try alloc.alloc(char_t, old_size);
+                            new_data.ptr[0] = 0;
+                            shared.size_ = 0;
+                            shared.setCapacity(old_size, .{
+                                .storage = .Large,
+                                .ownership = .Owning
+                            });
+                            shared.data_ = new_data.ptr;
+                            _ = box_t.RcHeader.release(true, rc);
+                        } else {
+                            rc.size_ = 0;
+                            shared.data_[0] = 0;
+                        }
+                    }
                 }
             }
 
@@ -93,16 +179,36 @@ pub const impl = struct {
                         large.pointer()[large_size] = 0;
                     },
                     .Shared => {
-                        var shared: *box_data_t = &self.storage.as_large;
+                        var shared: *box_shared_t = &self.storage.as_shared;
                         var rc: *box_t.RcHeader = box_t.RcHeader.headerFromData(shared.pointer());
                         if (@atomicLoad(usize, &rc.refcount_, .seq_cst) > 1) {
-                            self.storage.as_large.setCapacity(0, category_module.Mode{
+                            shared.setCapacity(0, category_module.Mode{
                                 .storage = .Large,
                                 .ownership = .Owning
                             });
-                            self.storage.as_large.size_ = rc.size();
+                            shared.size_ = rc.size();
                             try self.assign_init_c(alloc, c);
                             _ = box_t.RcHeader.release(true, rc);
+                        } else {
+                            const shared_size = rc.size();
+                            if (rc.capacity() < shared_size) {
+                                const alloc_size: usize = shared_size + (shared_size / 2);
+                                const new_rc = try box_t.RcHeader.alloc(alloc, shared_size, alloc_size);
+                                @import("Backend/strset.zig").Backend.strset(
+                                    char_t, 
+                                    new_rc.dataFromHeader(), 
+                                    c,
+                                    shared_size
+                                );
+                                shared.data_ = new_rc.data();
+                            } else {
+                                @import("Backend/strset.zig").Backend.strset(
+                                    char_t, 
+                                    rc.dataFromHeader(), 
+                                    c,
+                                    shared_size
+                                );
+                            }
                         }
                     }
                 }
@@ -119,14 +225,15 @@ pub const impl = struct {
                             str,
                             str_size
                         );
-                        self.storage.as_cache.data_[box_t.max_cache_size] = @intCast(str_size);
+                        cache.pointer()[box_t.max_cache_size] = @intCast(str_size);
+                        cache.pointer()[str_size] = 0;
                     },
                     .Heap => {
                         var large: *box_data_t = &self.storage.as_large;
                         const str_size = length;
                         const alloc_size: usize = str_size + (str_size / 2);
                         var alloc_slice = try alloc.alloc(char_t, alloc_size);
-                        self.storage.as_large.setCapacity(alloc_size, category_module.Mode{
+                        large.setCapacity(alloc_size, category_module.Mode{
                             .storage = .Large,
                             .ownership = .Owning
                         });
@@ -141,15 +248,35 @@ pub const impl = struct {
                         large.pointer()[str_size] = 0;
                     },
                     .Shared => {
-                        var shared: *box_data_t = &self.storage.as_large;
+                        var shared: *box_shared_t = &self.storage.as_shared;
                         var rc: *box_t.RcHeader = box_t.RcHeader.headerFromData(shared.pointer());
                         if (@atomicLoad(usize, &rc.refcount_, .seq_cst) > 1) {
-                            self.storage.as_large.setCapacity(0, category_module.Mode{
+                            shared.setCapacity(0, category_module.Mode{
                                 .storage = .Large,
                                 .ownership = .Owning
                             });
                             try self.assign_init_str(alloc, str, length);
                             _ = box_t.RcHeader.release(true, rc);
+                        } else {
+                            const str_size = length;
+                            if (rc.capacity() < length) {
+                                const alloc_size: usize = str_size + (str_size / 2);
+                                const new_rc = try box_t.RcHeader.alloc(alloc, str_size, alloc_size);
+                                @import("Backend/strcpy.zig").Backend.strcpy(
+                                    char_t, 
+                                    new_rc.dataFromHeader(), 
+                                    str,
+                                    str_size
+                                );
+                                shared.data_ = new_rc.dataFromHeader();
+                            } else {
+                                @import("Backend/strcpy.zig").Backend.strcpy(
+                                    char_t, 
+                                    rc.dataFromHeader(), 
+                                    str,
+                                    str_size
+                                );
+                            }
                         }
                     }
                 }

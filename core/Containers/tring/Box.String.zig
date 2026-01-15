@@ -6,6 +6,7 @@ pub const impl = struct {
         return struct {
             pub const char_t = Tr.char_t;
             pub const pointer_t = Tr.pointer_t;
+            pub const const_pointer_t = Tr.const_pointer_t;
             pub const type_size = Tr.type_size;
 
             const last_byte: usize = @sizeOf(Large) - 1;
@@ -23,7 +24,16 @@ pub const impl = struct {
                     return self.data_[max_cache_size];
                 }
 
+                pub fn capacity(self: *const Cache) usize {
+                    _ = self;
+                    return max_cache_size;
+                }
+
                 pub fn pointer(self: *Cache) pointer_t {
+                    return @ptrCast(&self.data_[0]);
+                }
+
+                pub fn const_pointer(self: *const Cache) const_pointer_t {
                     return @ptrCast(&self.data_[0]);
                 }
             };
@@ -33,11 +43,15 @@ pub const impl = struct {
                 size_: usize,
                 capacity_: usize,
 
-                pub fn size(self: *Large) usize {
+                pub fn size(self: *const Large) usize {
                     return self.size_;
                 }
 
                 pub fn pointer(self: *Large) pointer_t {
+                    return self.data_;
+                }
+
+                pub fn const_pointer(self: *const Large) const_pointer_t {
                     return self.data_;
                 }
 
@@ -64,14 +78,14 @@ pub const impl = struct {
                 capacity_: usize,
 
                 pub fn alloc(
-                    allocator: *std.mem.Allocator,
+                    allocator: std.mem.Allocator,
                     s: usize,
                     cap: usize
                 ) !*RcHeader {
                     const total_size = rc_header_size + cap;
 
                     const raw = try allocator.alloc(char_t, total_size);
-                    const header: *RcHeader = @ptrCast(raw.ptr);
+                    const header: *RcHeader = @ptrCast(@alignCast(raw.ptr));
 
                     header.refcount_ = 1;
                     header.size_ = s;
@@ -84,12 +98,18 @@ pub const impl = struct {
                     return self.size_;
                 }
 
-                pub fn data(header: *RcHeader) pointer_t {
-                    return @ptrCast(header + 1);
+                pub fn capacity(self: *RcHeader) usize {
+                    return self.capacity_;
+                }
+
+                pub fn dataFromHeader(header: *RcHeader) pointer_t {
+                    const byte_ptr: [*]u8 = @ptrCast(@alignCast(header));
+                    const data_ptr = byte_ptr + @sizeOf(RcHeader);
+                    return @ptrCast(@alignCast(data_ptr));
                 }
 
                 pub fn headerFromData(p: pointer_t) *RcHeader {
-                    return @alignCast(@ptrCast(p - rc_header_size));
+                    return @ptrCast(@alignCast(p - rc_header_size));
                 }
 
                 pub fn retain(comptime Atomic: bool, self: *RcHeader) void {
@@ -111,16 +131,52 @@ pub const impl = struct {
                 }
             };
 
+            const Shared = struct {
+                data_: pointer_t,
+                size_: usize,
+                capacity_: usize,
+
+                pub fn size(self: *const Shared) usize {
+                    var rc = RcHeader.headerFromData(self.data_);
+                    return rc.size_;
+                }
+
+                pub fn pointer(self: *Shared) pointer_t {
+                    return self.data_;
+                }
+
+                pub fn const_pointer(self: *const Shared) const_pointer_t {
+                    return self.data_;
+                }
+
+                pub inline fn capacity(self: *const Shared) usize {
+                    var rc = RcHeader.headerFromData(self.data_);
+                    return rc.capacity_;
+                }
+
+                pub inline fn setCapacity(
+                    self: *Shared,
+                    cap: usize,
+                    mode: category_module.Mode
+                ) void {
+                    self.capacity_ = cap |
+                        (@as(usize, @intFromEnum(mode.storage)) << 63) |
+                        (@as(usize, @intFromEnum(mode.ownership)) << 62);
+                }
+            };
+
             pub const Storage = union {
                 as_cache: Cache,
                 as_byte: [@sizeOf(Large)]u8,
-                as_large: Large
+                as_large: Large,
+                as_shared: Shared
             };
 
             storage: Storage,
 
             pub const box_data_t = Large;
             pub const cache_buffer_t = Cache;
+            pub const box_shared_t = Shared;
 
             const STORAGE_SHIFT = 7;
             const OWNERSHIP_SHIFT = 6;

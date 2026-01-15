@@ -19,6 +19,25 @@ pub const impl = struct {
 
             core: string_core = .init(),
 
+            pub fn fromView(alloc: std.mem.Allocator, view: anytype) !@This() {
+                comptime {
+                    if (!@hasField(@TypeOf(view), "ptr") or
+                        !@hasField(@TypeOf(view), "len"))
+                    {
+                        @compileError("fromView expects a StringView-like type");
+                    }
+                }
+                return .{
+                    .core = try .init_len(alloc, view.ptr, view.len)
+                };
+            }
+
+            pub fn fromSlice(alloc: std.mem.Allocator, slice: []const char_t) !@This() {
+                return .{
+                    .core = try .init_len(alloc, slice.ptr, slice.len)
+                };
+            }
+
             pub fn init_c(alloc: std.mem.Allocator, c: char_t) !@This() {
                 return .{
                     .core = try .init_c(alloc, c)
@@ -31,12 +50,32 @@ pub const impl = struct {
                 };
             }
 
+            pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+                self.core.deinit(alloc);
+            }
+
             pub fn pointer(self: *@This()) pointer_t {
                 return self.core.pointer();
             }
 
-            pub fn size(self: *@This()) usize {
+            pub fn const_pointer(self: *const @This()) const_pointer_t {
+                return self.core.const_pointer();
+            }
+
+            pub fn size(self: *const @This()) usize {
                 return self.core.size();
+            }
+
+            pub fn capacity(self: *const @This()) usize {
+                return self.core.capacity();
+            }
+
+            pub fn empty(self: *const @This()) bool {
+                return self.core.empty();
+            }
+
+            pub fn clear(self: *@This(), alloc: std.mem.Allocator) !void {
+                try self.core.clear(alloc);
             }
         };
     }
