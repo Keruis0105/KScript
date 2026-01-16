@@ -59,6 +59,15 @@ pub const impl = struct {
                     return self.capacity_ & capacity_extract_mask;
                 }
 
+                pub fn toSharedMode(self: *@This(), cap: usize) void {
+                    self.setCapacity(cap, 
+                        .{
+                            .storage = .Large,
+                            .ownership = .Shared
+                        }
+                    );
+                }
+
                 pub inline fn setCapacity(
                     self: *Large,
                     cap: usize,
@@ -152,6 +161,15 @@ pub const impl = struct {
                 pub inline fn capacity(self: *const Shared) usize {
                     var rc = RcHeader.headerFromData(self.data_);
                     return rc.capacity_;
+                }
+
+                pub fn toLargeMode(self: *@This(), cap: usize) void {
+                    self.setCapacity(cap, 
+                        .{
+                            .storage = .Large,
+                            .ownership = .Owning
+                        }
+                    );
                 }
 
                 pub inline fn setCapacity(
